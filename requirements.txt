@@ -1,0 +1,16 @@
+fastapi
+gunicorn
+uvicorn[standard]
+requests
+numpy
+python-multipart
+opencv-python-headless
+Pillow
+pydantic
+msal
+pydantic_settings
+qrcode[pil] 
+reportlab
+faiss-cpu
+onnxruntime
+insightface
