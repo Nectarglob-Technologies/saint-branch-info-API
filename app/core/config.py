@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     DOMAIN_NAME: str
     TEST_DOMAIN_URL: str
+    UI_DOMAIN_URL: str
 
     class Config:
         env_file = ".env"

@@ -7,15 +7,17 @@ from app.routers.saint_routes import router
 from app.routers.saint_routes import router as branch_saint_router
 from app.routers.saint_attendant_routes import router as saint_attendant_router
 from app.routers.face_routes import router as face_router
+from app.core.config import settings
  
 app = FastAPI(title="Saint Branch API")
+ui_url = settings.UI_DOMAIN_URL
  
 # ✅ CORS FIX
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
+        ui_url,
+        #"http://localhost:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],
