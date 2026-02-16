@@ -5,11 +5,11 @@
 
 """
 #Registry name should be lower case saintbranchinforeg
-az acr create --resource-group rg-public-apps --name SaintBranchInfoReg --sku Basic --admin-enabled true
+az acr create --resource-group rg-public-apps --name saintbranchinforeg --sku Basic --admin-enabled true
 
 #before running below az acr build make sure saint-branch-api is selected and dockerfile exist in it
 #dot is important. It means it will take source location as saint-branch-api folder 
-az acr build --registry SaintBranchInfoReg --image face-app:v1 .
+az acr build --registry saintbranchinforeg --image face-app:v1 .
 
 # Create the app and enable public ingress
 # Replace <ENVIRONMENT_NAME> with something like 'saint-env'

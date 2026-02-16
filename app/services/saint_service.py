@@ -384,14 +384,16 @@ class GraphBranchSaintClient:
             saint_id,
             filename
         )
-        #print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
+        print(f"Attempting to download file for saint_id={saint_id} with filename={filename}")
+        print(f"saint_drive_id: {self.saint_drive_id}    site_id: {self.site_id}      graph_base: {self.graph_base}")
+        print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
         graph_url = (
             f"{self.graph_base}"
             f"/sites/{self.site_id}"
             f"/drives/{self.saint_drive_id}"
             f"/root:{server_relative_path}:/content"
         )
-        #print(f"Constructed Graph URL for file download: {graph_url}")
+        print(f"Constructed Graph URL for file download: {graph_url}")
         resp = requests.get(
             graph_url,
             headers=self._headers_binary(),
