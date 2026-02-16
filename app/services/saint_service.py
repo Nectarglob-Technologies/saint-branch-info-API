@@ -120,6 +120,48 @@ class GraphBranchSaintClient:
         resp.raise_for_status()
         #print("SAINT ITEMS RESPONSE: ",resp.json())
         return [SPListItem(**item) for item in resp.json()["value"]]
+    
+    def get_saint_items_paginated(
+        self,
+        filters: Optional[Dict] = None,
+        page_size: int = 20,
+        next_link: Optional[str] = None,
+    ) -> list[SPListItem]:
+        """
+        Cursor-based pagination using Graph @odata.nextLink
+        """
+
+        if next_link:
+            url = next_link
+            params = None
+        else:
+            url = f"{self.base_url}/items"
+            params = {
+                "$expand": "fields",
+                "$top": page_size
+            }
+            if filters:
+                params["$filter"] = self._build_filter_query(filters)
+
+        #print(f"Fetching paginated items from URL: {url} with params: {params}")
+
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.auth.get_token()}",
+                "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly",
+            },
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+
+        data = resp.json()
+        return {
+            "items": [SPListItem(**item) for item in data.get("value", [])],
+            "next_cursor": data.get("@odata.nextLink"),
+        }
+
 
     # ---------------------------------------
     # GET SINGLE SAINT BY ID (BEST PRACTICE)
@@ -206,6 +248,7 @@ class GraphBranchSaintClient:
     def upload_saint_photo_background(
         self,
         saint_id: int,
+        item: dict,
         file: UploadFile,
     ):
         """
@@ -218,16 +261,20 @@ class GraphBranchSaintClient:
 
         # 1️⃣ Resize image
         resized_bytes = resize_image(file)
-        print("Resized image bytes size:", len(resized_bytes))
+        #print("Resized image bytes size:", len(resized_bytes))
         
         # 2️⃣ Upload to SharePoint document library using SharePointUploader utility class - pass connection details
         
+        saint_data = {
+            "id": item["id"],
+            **item.get("fields", {})
+        }
 
         # Upload image file
         photo_url = self.uploader.upload_file(
             saint_id=saint_id,
             file_bytes=resized_bytes,
-            filename="photo" + file.filename[file.filename.rfind("."):],
+            filename=saint_data.get("SaintUUID") + file.filename[file.filename.rfind("."):],
         )
         
         # Update SaintPhoto column with server relative URL
@@ -310,5 +357,67 @@ class GraphBranchSaintClient:
 
         return choices
 
+     # --------------------------------------------------
+    # DOCUMENT LIBRARY FILE FETCH (NEW – CORRECT WAY)
+    # --------------------------------------------------
+
+    def _build_saint_file_path(
+        self,
+        saint_id: int,
+        filename: str
+    ) -> str:
+        """
+        Example:
+        Saint-116/photo.jpg
+        """
+        return f"/Saint-{saint_id}/{filename}"
+
+    def download_saint_file_stream(
+        self,
+        saint_id: int,
+        filename: str
+    ):
+        """
+        Stream file bytes directly from document library
+        """
+        server_relative_path = self._build_saint_file_path(
+            saint_id,
+            filename
+        )
+        #print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
+        graph_url = (
+            f"{self.graph_base}"
+            f"/sites/{self.site_id}"
+            f"/drives/{self.saint_drive_id}"
+            f"/root:{server_relative_path}:/content"
+        )
+        #print(f"Constructed Graph URL for file download: {graph_url}")
+        resp = requests.get(
+            graph_url,
+            headers=self._headers_binary(),
+            stream=True,
+            timeout=30
+        )
+
+        if resp.status_code == 404:
+            raise ValueError("File not found")
+
+        resp.raise_for_status()
+        return resp.iter_content(chunk_size=8192)
     
-    
+
+    def get_image_filename(item: dict, column_name: str = "SaintPhoto") -> str | None:
+        """
+        Extract fileName from SharePoint Image column
+        """
+        fields = item.get("fields", {})
+        image_value = fields.get(column_name)
+
+        if not image_value:
+            return None
+
+        try:
+            image_json = json.loads(image_value)
+            return image_json.get("fileName")
+        except json.JSONDecodeError:
+            return None

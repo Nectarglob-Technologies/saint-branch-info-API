@@ -1,13 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, Depends
 import uuid
-
-# from fastapi import (
-#     APIRouter,
-#     UploadFile,
-#     File,
-#     BackgroundTasks,
-# )
-
+from typing import Optional
+from fastapi import Query
+from fastapi.responses import StreamingResponse
+from fastapi import HTTPException
+from app.services.attendant_service import GraphSaintAttendantClient
 
 from app.services.attendant_service import GraphSaintAttendantClient
 from app.schemas.attendant_item import (
@@ -95,59 +92,6 @@ def create_saint_attendant_with_image(
         },
     }
 
-
-# from fastapi import Depends
-
-# @router.post("/with-image", response_model=BranchAttendantResponse)
-# def create_saint_attendant_with_image(
-#     payload: BranchAttendantCreate = Depends(BranchAttendantCreate.as_form),
-#     photo: UploadFile = File(...),
-#     background_tasks: BackgroundTasks = BackgroundTasks(),
-# ):
-
-#     validate_image(photo)
-
-#     item = client.create_attendant(payload.model_dump())
-
-#     background_tasks.add_task(
-#         client.upload_attendant_image_background,
-#         attendant_id=item.id,
-#         file=photo
-#     )
-
-#     return {
-#         "success": True,
-#         "sharepoint_response": {
-#             "id": item.id,
-#             **item.fields
-#         }
-#     }
-
-
-# @router.post("/with-image", response_model=BranchAttendantResponse)
-# def create_saint_attendant_with_image(
-#     payload: BranchAttendantCreate,
-#     background_tasks: BackgroundTasks,
-#     photo: UploadFile = File(...)
-# ):
-#     validate_image(photo)
-
-#     item = client.create_attendant(payload.model_dump())
-
-#     background_tasks.add_task(
-#         client.upload_attendant_image_background,
-#         attendant_id=item.id,
-#         file=photo
-#     )
-
-#     return {
-#         "success": True,
-#         "sharepoint_response": {
-#             "id": item.id,
-#             **item.fields
-#         }
-#     }
-
 # ------------------------------------------------------------------
 # LIST attendants
 # ------------------------------------------------------------------
@@ -164,6 +108,67 @@ def list_saint_attendants():
         }
         for i in items
     ]
+from app.schemas.saint_item import BranchSaintMultiRecordsResponse
+
+@router.get("/search/paginated", response_model=BranchSaintMultiRecordsResponse)
+def search_attendants_paginated(
+    AttendantName: Optional[str] = Query(None),
+    AttendantContactNo: Optional[str] = Query(None),
+    page_size: int = Query(20, le=100),
+    cursor: Optional[str] = Query(None),
+):
+    filters = {}
+
+    # 🔵 Filter by Name (Title column in SharePoint)
+    if AttendantName:
+        filters["Title"] = AttendantName
+
+    # 🔵 Filter by Contact
+    if AttendantContactNo:
+        filters["AttendantContactNo"] = AttendantContactNo
+
+    result = client.get_attendants_paginated(
+        filters=filters or None,
+        page_size=page_size,
+        next_link=cursor,
+    )
+
+    items = result["items"]
+
+    response_items = [
+        {
+            "id": item.id,
+            **item.fields
+        }
+        for item in items
+    ]
+
+    return {
+        "success": True,
+        "count": len(response_items),
+        "next_cursor": result["next_cursor"],
+        "sharepoint_response": response_items,
+    }
+
+
+# Attendant Photo GET Logic
+@router.get("/{attendant_id}/photo")
+def get_attendant_photo(attendant_id: int, filename: str):
+    try:
+        stream = client.download_attendant_file_stream(
+            attendant_id=attendant_id,
+            filename=filename
+        )
+
+        return StreamingResponse(
+            stream,
+            media_type="image/jpeg",
+            headers={"Content-Disposition": "inline"}
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 
 # ------------------------------------------------------------------
 # UPDATE attendant

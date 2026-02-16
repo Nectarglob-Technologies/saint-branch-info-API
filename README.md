@@ -4,6 +4,34 @@
 #need to install visual C++
 
 """
+#Registry name should be lower case saintbranchinforeg
+az acr create --resource-group rg-public-apps --name SaintBranchInfoReg --sku Basic --admin-enabled true
+
+#before running below az acr build make sure saint-branch-api is selected and dockerfile exist in it
+#dot is important. It means it will take source location as saint-branch-api folder 
+az acr build --registry SaintBranchInfoReg --image face-app:v1 .
+
+# Create the app and enable public ingress
+# Replace <ENVIRONMENT_NAME> with something like 'saint-env'
+az containerapp create \
+  --name saint-branch-kp-api \
+  --resource-group rg-public-apps \
+  --environment saint-data-env \
+  --image saintbranchinforeg.azurecr.io/face-app:latest \
+  --registry-server saintbranchinforeg.azurecr.io \
+  --ingress external \
+  --target-port 8000 \
+  --cpu 1.0 --memory 2.0Gi \
+  --min-replicas 0 --max-replicas 1
+
+# link to github
+  az containerapp github-action add \
+  --name saint-branch-kp-api \
+  --resource-group rg-public-apps \
+  --repo-url "
+
+
+
 
 error: Microsoft Visual C++ 14.0 is required. Get it with “Build Tools for Visual Studio”
 

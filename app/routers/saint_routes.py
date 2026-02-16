@@ -20,12 +20,15 @@ from app.schemas.saint_item import (
 )
 from app.utils.image import validate_image
 
+from fastapi import Request
 
 router = APIRouter(prefix="/branch-saints", tags=["BranchSaints"])
 client = GraphBranchSaintClient()
 
 import uuid
 
+from fastapi.responses import StreamingResponse
+import requests
 
 # --------------------------------------------------
 # CREATE saint WITHOUT image (application/json)
@@ -83,6 +86,7 @@ def create_branch_saint_with_image(
     background_tasks.add_task(
         client.upload_saint_photo_background,
         saint_id=saint_id,
+        item=item,
         file=photo,
     )
      # 5 Background task: qr image generation + upload + update list column
@@ -127,7 +131,8 @@ def list_branch_saints():
 def search_branch_saints(
     FullName: Optional[str] = Query(None),
     Gender: Optional[str] = Query(None),
-    Age: Optional[int] = Query(None),
+    AgeFrom: Optional[int] = Query(None),
+    AgeEnd: Optional[int] = Query(None),
     City: Optional[str] = Query(None),
 ):
     filters = {}
@@ -138,9 +143,9 @@ def search_branch_saints(
     if Gender is not None:
         filters["Gender"] = Gender
 
-    if Age is not None:
-        filters["Age"] = Age
-
+    if AgeFrom is not None and AgeEnd is not None:
+        filters["AgeMin"] >= AgeFrom and filters["AgeMax"] <= AgeEnd
+        
     if City is not None:
         filters["City"] = City
     items = client.get_saint_items(filters=filters or None)
@@ -157,6 +162,59 @@ def search_branch_saints(
     return {
         "success": True,
         "count": len(response_items),
+        "sharepoint_response": response_items,
+    }
+
+@router.get("/search/paginated", response_model=BranchSaintMultiRecordsResponse)
+def search_branch_saints_paginated(
+    FullName: Optional[str] = Query(None),
+    Gender: Optional[str] = Query(None),
+    AgeFrom: Optional[int] = Query(None),
+    AgeEnd: Optional[int] = Query(None),
+    City: Optional[str] = Query(None),
+    page_size: int = Query(20, le=100),
+    cursor: Optional[str] = Query(None),
+):
+    filters = {}
+
+    if FullName:
+        filters["Title"] = FullName
+
+    if Gender:
+        filters["Gender"] = Gender
+
+    if City:
+        filters["City"] = City
+
+    # ⚠ SharePoint does NOT support range filters well
+    # Best practice: post-filter in API
+    result = client.get_saint_items_paginated(
+        filters=filters or None,
+        page_size=page_size,
+        next_link=cursor,
+    )
+
+    items = result["items"]
+
+    # Post-filter age range
+    if AgeFrom is not None and AgeEnd is not None:
+        items = [
+            i for i in items
+            if AgeFrom <= i.fields.get("Age", 0) <= AgeEnd
+        ]
+
+    response_items = [
+        {
+            "id": item.id,
+            **item.fields
+        }
+        for item in items
+    ]
+    print(f"Returning {len(response_items)} items, next_cursor: {result['next_cursor']}")
+    return {
+        "success": True,
+        "count": len(response_items),
+        "next_cursor": result["next_cursor"],  # 👈 IMPORTANT
         "sharepoint_response": response_items,
     }
 
@@ -241,3 +299,74 @@ def get_saint_by_qr(saint_uuid: str):
         }
     }
 # --------------------------------------------------
+
+# --------------------------------------------------
+# GET saint phot by file name and saint id
+# --------------------------------------------------
+@router.get("/{saint_id}/photo")
+def get_saint_photo(saint_id: int, filename: str):
+    try:
+        stream = client.download_saint_file_stream(
+            saint_id=saint_id,
+            filename=filename
+        )
+
+        return StreamingResponse(
+            stream,
+            media_type="image/jpeg",
+            headers={"Content-Disposition": "inline"}
+        )
+       
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+@router.get("/{saint_id}/qr-image")
+def get_saint_qr_image(saint_id: int, filename: str):
+    try:
+        stream = client.download_saint_file_stream(
+            saint_id=saint_id,
+            filename=filename
+        )
+
+        return StreamingResponse(
+            stream,
+            media_type="image/png",
+            headers={"Content-Disposition": "inline"}
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.get("/{saint_id}/qr-pdf")
+def get_saint_qr_pdf(
+        saint_id: int,
+        filename: str,
+        request: Request   # 👈 FastAPI injects this automatically
+):
+    try:
+
+        # pass request here to construct absolute URL for QR PDF 
+        pdf_url = get_saint_qr_pdf_link(request, saint_id, filename)
+
+        stream = client.download_saint_file_stream(
+            saint_id=saint_id,
+            filename=filename
+        )
+
+        return StreamingResponse(
+            stream,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "inline;",
+                "X-File-Url": pdf_url # 👈 Custom header to provide the absolute URL of the PDF
+            }
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    
+
+def get_saint_qr_pdf_link(request: Request, saint_id: int, filename: str) -> str:
+    base_url = str(request.base_url).rstrip("/")
+    return f"{base_url}/branch-saints/{saint_id}/qr-pdf?filename={filename}"
+

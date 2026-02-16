@@ -99,4 +99,5 @@ class BranchSaintSingleRecordResponse(BaseModel):
 class BranchSaintMultiRecordsResponse(BaseModel):
     success: bool
     count: int
+    next_cursor: Optional[str] = None
     sharepoint_response: List[Dict[str, Any]]

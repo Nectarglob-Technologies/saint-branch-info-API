@@ -10,23 +10,24 @@ from app.routers.face_routes import router as face_router
 from app.core.config import settings
  
 app = FastAPI(title="Saint Branch API")
-ui_url = settings.UI_DOMAIN_URL
- 
+print(f"UI Origin value:  {settings.UI_ORIGINS}")  # Debug print to verify the value is loaded correctly
+
 # ✅ CORS FIX
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        ui_url,
-        #"http://localhost:5174",
-    ],
+    allow_origins=settings.UI_ORIGINS,  # ✅ SMART CONFIG
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
  
+# ---------------- Health Check ----------------
 @app.get("/")
 def root():
-    return {"message": "API running successfully 🚀"}
+    return {
+        "message": "API running successfully 🚀",
+        #"environment": settings.ENVIRONMENT
+    }
  
 # ---------------- Register Routers ----------------
 app.include_router(branch_saint_router)
