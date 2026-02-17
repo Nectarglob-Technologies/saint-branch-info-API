@@ -38,7 +38,7 @@ def generate_qr(saint: dict, uploader: SharePointUploader, ttl_days: int = 30,co
     # -------------------------
     # 3. Upload to SharePoint
     # -------------------------
-    filename = f"{saint_data.get("SaintUUID")}.png"
+    filename = f"{saint_data.get('SaintUUID')}.png"
     
     # Upload qr image file
     qr_image_url = uploader.upload_file(

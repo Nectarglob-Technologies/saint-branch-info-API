@@ -372,6 +372,18 @@ class GraphBranchSaintClient:
         """
         return f"/Saint-{saint_id}/{filename}"
 
+
+    def _build_saint_file_path(
+        self,
+        saint_id: int,
+        filename: str
+    ) -> str:
+        """
+        Example:
+        Saint-79/photo.jpg
+        """
+        return f"/Saint-{saint_id}/{filename}"
+
     def download_saint_file_stream(
         self,
         saint_id: int,
@@ -384,8 +396,6 @@ class GraphBranchSaintClient:
             saint_id,
             filename
         )
-        print(f"Attempting to download file for saint_id={saint_id} with filename={filename}")
-        print(f"saint_drive_id: {self.saint_drive_id}    site_id: {self.site_id}      graph_base: {self.graph_base}")
         print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
         graph_url = (
             f"{self.graph_base}"
@@ -407,19 +417,22 @@ class GraphBranchSaintClient:
         resp.raise_for_status()
         return resp.iter_content(chunk_size=8192)
     
+    import json
 
-    def get_image_filename(item: dict, column_name: str = "SaintPhoto") -> str | None:
-        """
-        Extract fileName from SharePoint Image column
-        """
-        fields = item.get("fields", {})
-        image_value = fields.get(column_name)
+    import json
 
-        if not image_value:
-            return None
+def get_image_filename(item: dict, column_name: str = "SaintPhoto") -> str | None:
+    """
+    Extract fileName from SharePoint Image column
+    """
+    fields = item.get("fields", {})
+    image_value = fields.get(column_name)
 
-        try:
-            image_json = json.loads(image_value)
-            return image_json.get("fileName")
-        except json.JSONDecodeError:
-            return None
+    if not image_value:
+        return None
+
+    try:
+        image_json = json.loads(image_value)
+        return image_json.get("fileName")
+    except json.JSONDecodeError:
+        return None

@@ -1,11 +1,16 @@
 from app.services.face_detector import FaceDetector
 from app.services.vector_service import VectorService
+# from app.services.branch_saint_service import GraphBranchSaintClient
+
+
+
 
 
 class FaceService:
     def __init__(self):
         self.detector = FaceDetector()
         self.vector_service = VectorService()
+        # self.saint_client = GraphBranchSaintClient() 
 
     # ---------------- REGISTER FACE ---------------- #
 
@@ -113,8 +118,47 @@ class FaceService:
                 results["medium"] or results["low"]
             ),
         }
+        if best_match:
+            from app.services.saint_service import GraphBranchSaintClient
 
+            saint_client = GraphBranchSaintClient()
+            saint_data = saint_client.get_saint_item_by_id(
+                best_match["entity_id"]
+            )
+
+            fields = saint_data.get("fields", {})
+
+            best_match["name"] = fields.get("Title")
+            best_match["contact"] = fields.get("SaintContactNo")
+            best_match["city"] = fields.get("City")
+            best_match["state"] = fields.get("State")
+
+
+        # if mode == "review":
+        #     response["matches"] = results
+        #     response["confidence_policy"] = {
+        #         "high": ">= 80% (auto accept)",
+        #         "medium": "65–80% (manual review)",
+        #         "low": "50–65% (weak match)",
+        #     }
         if mode == "review":
+
+            from app.services.saint_service import GraphBranchSaintClient
+            saint_client = GraphBranchSaintClient()
+
+            # 🔥 Add full details to high & medium matches
+            for category in ["high", "medium"]:
+                for match in results.get(category, []):
+                    saint_data = saint_client.get_saint_item_by_id(
+                        match["entity_id"]
+                    )
+                    fields = saint_data.get("fields", {})
+
+                    match["name"] = fields.get("Title")
+                    match["contact"] = fields.get("SaintContactNo")
+                    match["city"] = fields.get("City")
+                    match["state"] = fields.get("State")
+
             response["matches"] = results
             response["confidence_policy"] = {
                 "high": ">= 80% (auto accept)",
@@ -123,3 +167,5 @@ class FaceService:
             }
 
         return response
+
+

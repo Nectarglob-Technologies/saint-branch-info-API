@@ -27,6 +27,8 @@ face_service = FaceService()
 async def search_by_image(
     file: UploadFile = File(...),
     mode: str = Query("default", enum=["default", "review"]),
+    # threshold: float = Query(0.7),
+    # limit: int = Query(5)
 ):
     try:
 

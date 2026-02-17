@@ -6,6 +6,18 @@ from fastapi.responses import StreamingResponse
 from fastapi import HTTPException
 from app.services.attendant_service import GraphSaintAttendantClient
 
+
+
+
+
+# from fastapi import (
+#     APIRouter,
+#     UploadFile,
+#     File,
+#     BackgroundTasks,
+# )
+
+
 from app.services.attendant_service import GraphSaintAttendantClient
 from app.schemas.attendant_item import (
     BranchAttendantCreate,
@@ -91,6 +103,59 @@ def create_saint_attendant_with_image(
             **item["fields"],
         },
     }
+
+
+# from fastapi import Depends
+
+# @router.post("/with-image", response_model=BranchAttendantResponse)
+# def create_saint_attendant_with_image(
+#     payload: BranchAttendantCreate = Depends(BranchAttendantCreate.as_form),
+#     photo: UploadFile = File(...),
+#     background_tasks: BackgroundTasks = BackgroundTasks(),
+# ):
+
+#     validate_image(photo)
+
+#     item = client.create_attendant(payload.model_dump())
+
+#     background_tasks.add_task(
+#         client.upload_attendant_image_background,
+#         attendant_id=item.id,
+#         file=photo
+#     )
+
+#     return {
+#         "success": True,
+#         "sharepoint_response": {
+#             "id": item.id,
+#             **item.fields
+#         }
+#     }
+
+
+# @router.post("/with-image", response_model=BranchAttendantResponse)
+# def create_saint_attendant_with_image(
+#     payload: BranchAttendantCreate,
+#     background_tasks: BackgroundTasks,
+#     photo: UploadFile = File(...)
+# ):
+#     validate_image(photo)
+
+#     item = client.create_attendant(payload.model_dump())
+
+#     background_tasks.add_task(
+#         client.upload_attendant_image_background,
+#         attendant_id=item.id,
+#         file=photo
+#     )
+
+#     return {
+#         "success": True,
+#         "sharepoint_response": {
+#             "id": item.id,
+#             **item.fields
+#         }
+#     }
 
 # ------------------------------------------------------------------
 # LIST attendants

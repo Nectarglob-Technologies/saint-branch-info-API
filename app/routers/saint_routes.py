@@ -20,7 +20,6 @@ from app.schemas.saint_item import (
 )
 from app.utils.image import validate_image
 
-from fastapi import Request
 
 router = APIRouter(prefix="/branch-saints", tags=["BranchSaints"])
 client = GraphBranchSaintClient()
@@ -172,6 +171,10 @@ def search_branch_saints_paginated(
     AgeFrom: Optional[int] = Query(None),
     AgeEnd: Optional[int] = Query(None),
     City: Optional[str] = Query(None),
+    RegistrationID: Optional[str] = Query(None),
+    #  RegID: Optional[str] = Query(None),
+    SaintContactNo: Optional[str] = Query(None),
+    Pincode: Optional[str] = Query(None),
     page_size: int = Query(20, le=100),
     cursor: Optional[str] = Query(None),
 ):
@@ -185,6 +188,15 @@ def search_branch_saints_paginated(
 
     if City:
         filters["City"] = City
+
+    if RegistrationID :
+        filters["RegistrationID"] = RegistrationID
+
+    if SaintContactNo :
+        filters["SaintContactNo"] = SaintContactNo
+
+    if Pincode :
+        filters["Pincode"] = Pincode
 
     # ⚠ SharePoint does NOT support range filters well
     # Best practice: post-filter in API
@@ -338,16 +350,8 @@ def get_saint_qr_image(saint_id: int, filename: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.get("/{saint_id}/qr-pdf")
-def get_saint_qr_pdf(
-        saint_id: int,
-        filename: str,
-        request: Request   # 👈 FastAPI injects this automatically
-):
+def get_saint_qr_pdf(saint_id: int,filename: str):
     try:
-
-        # pass request here to construct absolute URL for QR PDF 
-        pdf_url = get_saint_qr_pdf_link(request, saint_id, filename)
-
         stream = client.download_saint_file_stream(
             saint_id=saint_id,
             filename=filename
@@ -357,16 +361,9 @@ def get_saint_qr_pdf(
             stream,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": "inline;",
-                "X-File-Url": pdf_url # 👈 Custom header to provide the absolute URL of the PDF
+                "Content-Disposition": "inline;"
             }
         )
 
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    
-
-def get_saint_qr_pdf_link(request: Request, saint_id: int, filename: str) -> str:
-    base_url = str(request.base_url).rstrip("/")
-    return f"{base_url}/branch-saints/{saint_id}/qr-pdf?filename={filename}"
-
