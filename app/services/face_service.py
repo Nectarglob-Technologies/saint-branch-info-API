@@ -105,9 +105,13 @@ class FaceService:
             }
  
         face = max(faces, key=lambda f: f.det_score)
+        print(f"Detected face in face_service with confidence {face.det_score:.2f}")
         embedding = face.embedding.astype("float32")
- 
+        print(f"Face embedding shape: {embedding.shape}")
+        print(f"Vector service index: {self.vector_service.index}")
+        print(f"vector service index total entries: {self.vector_service.index.ntotal}")
         results = self.vector_service.search(embedding)
+        print(f"Search results in face_service: {results}")
  
         best_match = results["high"][0] if results["high"] else None
  

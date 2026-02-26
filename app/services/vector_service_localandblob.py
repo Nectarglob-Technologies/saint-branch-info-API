@@ -6,7 +6,6 @@ import hashlib
 import threading
 from typing import Dict
 
-from azure.core.exceptions import ResourceNotFoundError
 from app.services.blob_service import BlobVectorStorage
 
 DIM = 512
@@ -35,11 +34,9 @@ class VectorService:
         self._load_from_blob_or_local()
 
     # ---------------------------------------------------
-    # INITIAL LOAD (SAFELY HANDLED)
+    # INITIAL LOAD
     # ---------------------------------------------------
     def _load_from_blob_or_local(self):
-
-        blob_loaded = False
 
         try:
             self.index_etag = self.storage.download_file(
@@ -51,40 +48,23 @@ class VectorService:
             )
 
             print("✅ Vector DB downloaded from Blob")
-            blob_loaded = True
 
-        except ResourceNotFoundError:
-            print("⚠ Blob files not found. Creating new index.")
-        except Exception as e:
-            print(f"⚠ Blob load failed: {e}")
-
-        # ---------------------------
-        # SAFE FAISS LOAD
-        # ---------------------------
-        try:
-            if blob_loaded and os.path.exists(INDEX_PATH) and os.path.getsize(INDEX_PATH) > 0:
-                self.index = faiss.read_index(INDEX_PATH)
-            else:
-                self.index = faiss.IndexIDMap(
-                    faiss.IndexFlatIP(DIM)
-                )
         except Exception:
-            print("⚠ Corrupted index detected. Creating new index.")
+            print("⚠ No blob found, using local/new index")
+
+        # Load FAISS index
+        if os.path.exists(INDEX_PATH):
+            self.index = faiss.read_index(INDEX_PATH)
+        else:
             self.index = faiss.IndexIDMap(
                 faiss.IndexFlatIP(DIM)
             )
 
-        # ---------------------------
-        # SAFE METADATA LOAD
-        # ---------------------------
-        try:
-            if blob_loaded and os.path.exists(META_PATH) and os.path.getsize(META_PATH) > 0:
-                with open(META_PATH, "r") as f:
-                    self.meta = json.load(f)
-            else:
-                self.meta = {}
-        except Exception:
-            print("⚠ Corrupted metadata detected. Resetting metadata.")
+        # Load metadata
+        if os.path.exists(META_PATH):
+            with open(META_PATH, "r") as f:
+                self.meta = json.load(f)
+        else:
             self.meta = {}
 
     # ---------------------------------------------------
@@ -118,7 +98,6 @@ class VectorService:
             )
 
             print("✅ Vector DB uploaded to Blob")
-            self._load_from_blob_or_local()
 
         except Exception as e:
             raise Exception(
@@ -208,7 +187,7 @@ class VectorService:
             print("✅ Embedding updated successfully")
 
     # ---------------------------------------------------
-    # SEARCH (UNCHANGED)
+    # SEARCH (NO CHANGE)
     # ---------------------------------------------------
     def search(self, embedding: np.ndarray, top_k: int = 20):
 
@@ -219,7 +198,6 @@ class VectorService:
         faiss.normalize_L2(embedding)
 
         scores, ids = self.index.search(embedding, top_k)
-        print(f"Search scores in vector_service: {scores}, IDs: {ids}")
 
         buckets = {"high": [], "medium": [], "low": []}
 

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     SAINT_DOC_LIB: str
     ATTENDANT_DOC_LIB: str
 
+    AZURE_STORAGE_CONNECTION_STRING: str
+
     class Config:
         env_file = ".env"
         #extra = "ignore"   # VERY IMPORTANT
