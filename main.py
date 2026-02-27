@@ -30,5 +30,5 @@ app.include_router(saint_attendant_router)
 app.include_router(face_router)
  
 # ---------------- Static Files ----------------
-app.mount("/static", StaticFiles(directory="static"), name="static")
+#app.mount("/static", StaticFiles(directory="static"), name="static")
  
