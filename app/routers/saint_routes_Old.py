@@ -114,19 +114,16 @@ def create_branch_saint_with_image(
 # --------------------------------------------------
 @router.get("/", response_model=list[BranchSaintSingleRecordResponse])
 def list_branch_saints():
-    data = client.get_saints_with_attendants()
-
-    # items = client.get_saint_items()
-    # items = client.get_saint_items(order_by="Created desc")
+    items = client.get_saint_items()
     return [
         {
             "success": True,
-            "sharepoint_response": saint
-                # "id": i.id,
-                # **i.fields
-            
+            "sharepoint_response": {
+                "id": i.id,
+                **i.fields
+            }
         }
-        for saint in data
+        for i in items
     ]
 
 @router.get("/search", response_model=BranchSaintMultiRecordsResponse)
@@ -180,8 +177,6 @@ def search_branch_saints_paginated(
     Pincode: Optional[str] = Query(None),
     page_size: int = Query(20, le=100),
     cursor: Optional[str] = Query(None),
-    AttendantName: Optional[str] = Query(None),
-    AttendantContactNo: Optional[str] = Query(None),
 ):
     filters = {}
 
@@ -202,59 +197,16 @@ def search_branch_saints_paginated(
 
     if Pincode :
         filters["Pincode"] = Pincode
-    
 
     # ⚠ SharePoint does NOT support range filters well
     # Best practice: post-filter in API
-    # result = client.get_saint_items_paginated(
-    #     filters=filters or None,
-    #     page_size=page_size,
-    #     next_link=cursor,
-    #     # order_by="Created desc"
-    # )
+    result = client.get_saint_items_paginated(
+        filters=filters or None,
+        page_size=page_size,
+        next_link=cursor,
+    )
 
-    # 🔥 Decide pagination mode
-    # if AttendantName or AttendantContactNo:
-    if (AttendantName and AttendantName.strip()) or \
-       (AttendantContactNo and AttendantContactNo.strip()):
-        # Disable pagination when filtering by attendant
-        items = client.get_saint_items(filters=filters or None)
-        next_cursor = None
-    else:
-        result = client.get_saint_items_paginated(
-            filters=filters or None,
-            page_size=page_size,
-            next_link=cursor,
-        )
-        items = result["items"]
-        next_cursor = result["next_cursor"]
-        
-
-       
-    
-
-    # items = result["items"]
-    from app.services.attendant_service import GraphSaintAttendantClient
-
-    attendant_client = GraphSaintAttendantClient()
-   
-# 👉 Current page saint IDs
-    saint_ids = [int(i.id) for i in items]
-
-    # 👉 Get attendants (CALL the function)
-    attendants = attendant_client.get_attendants()
-
-    from collections import defaultdict
-    attendant_map = defaultdict(list)   
-
-    for att in attendants:
-        saint_id = att.fields.get("BranchSaintsDataIDLookupId")
-
-        if saint_id and int(saint_id) in saint_ids:
-            attendant_map[int(saint_id)].append({
-                "id": att.id,
-                **att.fields
-            })
+    items = result["items"]
 
     # Post-filter age range
     if AgeFrom is not None and AgeEnd is not None:
@@ -266,45 +218,15 @@ def search_branch_saints_paginated(
     response_items = [
         {
             "id": item.id,
-            **item.fields,
-            "attendants": attendant_map.get(int(item.id), [])
+            **item.fields
         }
         for item in items
     ]
-
-    # 🔍 Attendant Name Filter
-    if AttendantName:
-        response_items = [
-            s for s in response_items
-            if any(
-                AttendantName.lower() in a.get("Title", "").lower()
-                for a in s.get("attendants", [])
-            )
-        ]
-
-    # 🔍 Attendant Contact Filter
-    if AttendantContactNo:
-        response_items = [
-            s for s in response_items
-            if any(
-                AttendantContactNo in str(a.get("AttendantContactNo", ""))
-                for a in s.get("attendants", [])
-            )
-        ]
-    # print(f"Returning {len(response_items)} items, next_cursor: {result['next_cursor']}")
-    # return {
-    #     "success": True,
-    #     "count": len(response_items),
-    #     "next_cursor": result["next_cursor"],  # 👈 IMPORTANT
-    #     "sharepoint_response": response_items,
-    #     #  order_by="Created desc"
-    # }
-    print(f"Returning {len(response_items)} items, next_cursor: {next_cursor}")
-
+    print(f"Returning {len(response_items)} items, next_cursor: {result['next_cursor']}")
     return {
         "success": True,
         "count": len(response_items),
-        "next_cursor": next_cursor,
+        "next_cursor": result["next_cursor"],  # 👈 IMPORTANT
         "sharepoint_response": response_items,
     }
 

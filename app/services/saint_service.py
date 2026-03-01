@@ -13,6 +13,9 @@ from app.utils.sharepoint_uploader import SharePointUploader
 from app.utils.qr import generate_qr
 from app.utils.pdf import generate_qr_pdf_card
 
+from app.services.attendant_service import GraphSaintAttendantClient
+from collections import defaultdict
+
 import json
 
 
@@ -20,6 +23,7 @@ class GraphBranchSaintClient:
     def __init__(self):
         self.auth = GraphAuth()
         self.face_service = FaceService()
+        # self.attendant_client = GraphSaintAttendantClient()  # 👈 add this
 
         # Microsoft Graph base URL
         self.graph_base = "https://graph.microsoft.com/v1.0"
@@ -31,6 +35,7 @@ class GraphBranchSaintClient:
         self.list_name = settings.SAINT_LIST_NAME
         self.site_url = settings.SITE_URL
         self.tenant_id = settings.TENANT_ID
+        
 
         # Base URL for saint list operations
         self.base_url = (
@@ -47,379 +52,428 @@ class GraphBranchSaintClient:
                 base_url=self.base_url,
                 headers=self._headers()
             )
+        
 
-    # ------------------------------------------------------------------
-    # Headers
-    # ------------------------------------------------------------------
+
+    def get_saints_with_attendants(self):
+
+        # 🔹 Attendant client create 
+        attendant_client = GraphSaintAttendantClient()
+
+        # 🔹 Saints 
+        saints = self.get_saint_items()
+
+        # 🔹 Attendants ghe
+        attendants = attendant_client.get_attendants()
+        print("Saint IDs:", [s.id for s in saints])
+        print("Attendant Saint IDs:", [a.fields.get("BranchSaintsDataIDLookupId") for a in attendants])
+
+
+        # 🔹 Group attendants by SaintId
+        attendant_map = defaultdict(list)
+
+        for att in attendants:
+            saint_id = att.fields.get("BranchSaintsDataIDLookupId")  # ⚠ field name confirm kar
+            if saint_id:
+                attendant_map[int(saint_id)].append({
+                    "id": att.id,
+                    **att.fields
+                    
+                })
+            
+        # 🔹 Merge kar
+        merged_data = []
+
+        for saint in saints:
+            merged_data.append({
+                "id": saint.id,
+                **saint.fields,
+                "attendants": attendant_map.get(int(saint.id), [])
+    })
+
+        return merged_data
+    
+
+        # ------------------------------------------------------------------
+        # Headers
+        # ------------------------------------------------------------------
 
     def _headers(self):
-        return {
-            "Authorization": f"Bearer {self.auth.get_token()}",
-            "Content-Type": "application/json",
-        }
+            return {
+                "Authorization": f"Bearer {self.auth.get_token()}",
+                "Content-Type": "application/json",
+            }
 
     def _headers_binary(self):
-        return {
-            "Authorization": f"Bearer {self.auth.get_token()}",
-        }
+            return {
+                "Authorization": f"Bearer {self.auth.get_token()}",
+            }
 
-    # ------------------------------------------------------------------
-    # Resolve Graph IDs
-    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Resolve Graph IDs
+        # ------------------------------------------------------------------
 
     def _get_site_id(self, site_url: str) -> str:
-        parsed = urlparse(site_url)
-        hostname = parsed.netloc
-        site_path = parsed.path
+            parsed = urlparse(site_url)
+            hostname = parsed.netloc
+            site_path = parsed.path
 
-        url = f"{self.graph_base}/sites/{hostname}:{site_path}"
-        resp = requests.get(url, headers=self._headers())
-        resp.raise_for_status()
-        return resp.json()["id"]
+            url = f"{self.graph_base}/sites/{hostname}:{site_path}"
+            resp = requests.get(url, headers=self._headers())
+            resp.raise_for_status()
+            return resp.json()["id"]
 
     def _get_list_id(self, list_name: str) -> str:
-        url = f"{self.graph_base}/sites/{self.site_id}/lists"
-        resp = requests.get(url, headers=self._headers())
-        resp.raise_for_status()
+            url = f"{self.graph_base}/sites/{self.site_id}/lists"
+            resp = requests.get(url, headers=self._headers())
+            resp.raise_for_status()
 
-        for lst in resp.json()["value"]:
-            if lst["displayName"] == list_name:
-                return lst["id"]
+            for lst in resp.json()["value"]:
+                if lst["displayName"] == list_name:
+                    return lst["id"]
 
-        raise RuntimeError(f"List not found: {list_name}")
+            raise RuntimeError(f"List not found: {list_name}")
 
     def _get_doc_lib_drive_id(self, library_name: str) -> str:
-        url = f"{self.graph_base}/sites/{self.site_id}/drives"
-        resp = requests.get(url, headers=self._headers())
-        resp.raise_for_status()
+            url = f"{self.graph_base}/sites/{self.site_id}/drives"
+            resp = requests.get(url, headers=self._headers())
+            resp.raise_for_status()
 
-        for drive in resp.json()["value"]:
-            if drive["name"] == library_name:
-                return drive["id"]
+            for drive in resp.json()["value"]:
+                if drive["name"] == library_name:
+                    return drive["id"]
 
-        raise RuntimeError(f"Document library not found: {library_name}")
-    
-    def get_saint_items(
-        self,
-        filters: Optional[Dict] = None
-    ) -> list[SPListItem]:
-            
-        url = f"{self.base_url}/items?expand=fields"
-        params = {}
-        if filters:
-            params["$filter"] = self._build_filter_query(filters)
+            raise RuntimeError(f"Document library not found: {library_name}")
         
-        resp = requests.get(
-            url,
-            headers={
-            "Authorization": f"Bearer {self.auth.get_token()}",
-            "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly",
-        },
-            params = params, timeout=30
-        )
-        resp.raise_for_status()
-        #print("SAINT ITEMS RESPONSE: ",resp.json())
-        return [SPListItem(**item) for item in resp.json()["value"]]
-    
-    def get_saint_items_paginated(
-        self,
-        filters: Optional[Dict] = None,
-        page_size: int = 20,
-        next_link: Optional[str] = None,
-    ) -> list[SPListItem]:
-        """
-        Cursor-based pagination using Graph @odata.nextLink
-        """
-
-        if next_link:
-            url = next_link
-            params = None
-        else:
-            url = f"{self.base_url}/items"
-            params = {
-                "$expand": "fields",
-                "$top": page_size
-            }
+    def get_saint_items(
+            self,
+            filters: Optional[Dict] = None
+        ) -> list[SPListItem]:
+                
+            url = f"{self.base_url}/items?expand=fields"
+            params = {}
             if filters:
                 params["$filter"] = self._build_filter_query(filters)
 
-        #print(f"Fetching paginated items from URL: {url} with params: {params}")
-
-        resp = requests.get(
-            url,
-            headers={
+        
+            
+            resp = requests.get(
+                url,
+                headers={
                 "Authorization": f"Bearer {self.auth.get_token()}",
                 "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly",
             },
-            params=params,
-            timeout=30,
-        )
-        resp.raise_for_status()
-
-        data = resp.json()
-        return {
-            "items": [SPListItem(**item) for item in data.get("value", [])],
-            "next_cursor": data.get("@odata.nextLink"),
-        }
-
-
-    # ---------------------------------------
-    # GET SINGLE SAINT BY ID (BEST PRACTICE)
-    # ---------------------------------------
-    def get_saint_item_by_id(
-        self,
-        saint_id: int
-    ) -> Dict:
-        """
-        Fetch single saint record directly by ID
-        """
-        url = (
-            f"{self.base_url}/items/{saint_id}"
-            "?expand=fields"
-        )
-        resp = requests.get(url, headers=self._headers(), timeout=30)
-
-        if resp.status_code == 404:
-            raise ValueError("Saint not found")
+                params = params, timeout=30
+            )
+            resp.raise_for_status()
+            #print("SAINT ITEMS RESPONSE: ",resp.json())
+            return [SPListItem(**item) for item in resp.json()["value"]]
         
-        resp.raise_for_status()
+    def get_saint_items_paginated(
+            self,
+            filters: Optional[Dict] = None,
+            page_size: int = 20,
+            next_link: Optional[str] = None,
+            order_by="Created desc"
+        ) -> list[SPListItem]:
+            """
+            Cursor-based pagination using Graph @odata.nextLink
+            """
 
-        return resp.json()
-    
-    # ---------------------------------------
-    # INTERNAL FILTER BUILDER
-    # ---------------------------------------    
-    def _build_filter_query(self, filters: Dict) -> str:
-        conditions = []
-
-        for key, value in filters.items():
-            field = f"fields/{key}"
-
-            if isinstance(value, str):
-                conditions.append(f"{field} eq '{value}'")
-            elif isinstance(value, bool):
-                conditions.append(f"{field} eq {str(value).lower()}")
+            if next_link:
+                url = next_link
+                params = None
             else:
-                conditions.append(f"{field} eq {value}")
+                url = f"{self.base_url}/items"
+                params = {
+                    "$expand": "fields",
+                    "$top": page_size
+                }
+                if filters:
+                    params["$filter"] = self._build_filter_query(filters)
 
-        return " and ".join(conditions)
+                if order_by:
+                    field, direction = order_by.split()
+                    params["$orderby"] = f"fields/{field} {direction}"
 
-    # ------------------------------------------------------------------
-    # Saint CRUD (List only)
-    # ------------------------------------------------------------------
+
+            #print(f"Fetching paginated items from URL: {url} with params: {params}")
+
+            resp = requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.auth.get_token()}",
+                    "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly",
+                },
+                params=params,
+                timeout=30,
+            )
+            resp.raise_for_status()
+
+            data = resp.json()
+            return {
+                "items": [SPListItem(**item) for item in data.get("value", [])],
+                "next_cursor": data.get("@odata.nextLink"),
+            }
+
+
+        # ---------------------------------------
+        # GET SINGLE SAINT BY ID (BEST PRACTICE)
+        # ---------------------------------------
+    def get_saint_item_by_id(
+            self,
+            saint_id: int
+        ) -> Dict:
+            """
+            Fetch single saint record directly by ID
+            """
+            url = (
+                f"{self.base_url}/items/{saint_id}"
+                "?expand=fields"
+            )
+            resp = requests.get(url, headers=self._headers(), timeout=30)
+
+            if resp.status_code == 404:
+                raise ValueError("Saint not found")
+            
+            resp.raise_for_status()
+
+            return resp.json()
+        
+        # ---------------------------------------
+        # INTERNAL FILTER BUILDER
+        # ---------------------------------------    
+    def _build_filter_query(self, filters: Dict) -> str:
+            conditions = []
+
+            for key, value in filters.items():
+                field = f"fields/{key}"
+
+                if isinstance(value, str):
+                    conditions.append(f"{field} eq '{value}'")
+                elif isinstance(value, bool):
+                    conditions.append(f"{field} eq {str(value).lower()}")
+                else:
+                    conditions.append(f"{field} eq {value}")
+
+            return " and ".join(conditions)
+
+        # ------------------------------------------------------------------
+        # Saint CRUD (List only)
+        # ------------------------------------------------------------------
 
     def create_saint_item(self, payload: dict) -> dict:
-        url = (
-            f"{self.base_url}/items"
-        )
-        print("Creating saint with payload:", payload)
-        resp = requests.post(
-            url,
-            headers=self._headers(),
-            json={"fields": payload},
-        )
-        resp.raise_for_status()
-        return resp.json()
+            url = (
+                f"{self.base_url}/items"
+            )
+            print("Creating saint with payload:", payload)
+            resp = requests.post(
+                url,
+                headers=self._headers(),
+                json={"fields": payload},
+            )
+            resp.raise_for_status()
+            return resp.json()
 
     def update_saint_item(self, item_id: int, payload: dict):
-        url = (
-            f"{self.base_url}/items/{item_id}/fields"
-        )
+            url = (
+                f"{self.base_url}/items/{item_id}/fields"
+            )
 
-        resp = requests.patch(
-            url,
-            headers=self._headers(),
-            json=payload,
-        )
-        resp.raise_for_status()
+            resp = requests.patch(
+                url,
+                headers=self._headers(),
+                json=payload,
+            )
+            resp.raise_for_status()
 
     def delete_saint_item(self, item_id: int):
-        url = (
-            f"{self.base_url}/items/{item_id}"
-        )
+            url = (
+                f"{self.base_url}/items/{item_id}"
+            )
 
-        resp = requests.delete(url, headers=self._headers())
-        resp.raise_for_status()
+            resp = requests.delete(url, headers=self._headers())
+            resp.raise_for_status()
 
-    # ------------------------------------------------------------------
-    # Background task: upload image + face registration
-    # ------------------------------------------------------------------
+        # ------------------------------------------------------------------
+        # Background task: upload image + face registration
+        # ------------------------------------------------------------------
 
     def upload_saint_photo_background(
-        self,
-        saint_id: int,
-        item: dict,
-        file: UploadFile,
-    ):
-        """
-        Background task:
-        1. Upload image to document library
-        2. Register face embedding into vector DB
-        """
+            self,
+            saint_id: int,
+            item: dict,
+            file: UploadFile,
+        ):
+            """
+            Background task:
+            1. Upload image to document library
+            2. Register face embedding into vector DB
+            """
 
-        #try:
+            #try:
 
-        # 1️⃣ Resize image
-        resized_bytes = resize_image(file)
-        #print("Resized image bytes size:", len(resized_bytes))
-        
-        # 2️⃣ Upload to SharePoint document library using SharePointUploader utility class - pass connection details
-        
-        saint_data = {
-            "id": item["id"],
-            **item.get("fields", {})
-        }
+            # 1️⃣ Resize image
+            resized_bytes = resize_image(file)
+            #print("Resized image bytes size:", len(resized_bytes))
+            
+            # 2️⃣ Upload to SharePoint document library using SharePointUploader utility class - pass connection details
+            
+            saint_data = {
+                "id": item["id"],
+                **item.get("fields", {})
+            }
 
-        # Upload image file
-        photo_url = self.uploader.upload_file(
-            saint_id=saint_id,
-            file_bytes=resized_bytes,
-            filename=saint_data.get("SaintUUID") + file.filename[file.filename.rfind("."):],
-        )
-        
-        # Update SaintPhoto column with server relative URL
-        extacted_image_url = self.uploader.extract_server_relative_url(photo_url)
-        
-        # Update SaintPhoto column
-        self.uploader.update_image_column(saint_id,"SaintPhoto",extacted_image_url)
-        
-        # Register face (detector + embedding + FAISS)
-        self.face_service.register_face(
-            entity_type="saint",
-            entity_id=saint_id,
-            image_bytes=resized_bytes,
-            image_url=photo_url,
-        )
-        
-        #except Exception as e:
-            # Never crash FastAPI background task
-        #    print(f"[ERROR] Saint photo and face registration background task failed: {e}")
+            # Upload image file
+            photo_url = self.uploader.upload_file(
+                saint_id=saint_id,
+                file_bytes=resized_bytes,
+                filename=saint_data.get("SaintUUID") + file.filename[file.filename.rfind("."):],
+            )
+            
+            # Update SaintPhoto column with server relative URL
+            extacted_image_url = self.uploader.extract_server_relative_url(photo_url)
+            
+            # Update SaintPhoto column
+            self.uploader.update_image_column(saint_id,"SaintPhoto",extacted_image_url)
+            
+            # Register face (detector + embedding + FAISS)
+            self.face_service.register_face(
+                entity_type="saint",
+                entity_id=saint_id,
+                image_bytes=resized_bytes,
+                image_url=photo_url,
+            )
+            
+            #except Exception as e:
+                # Never crash FastAPI background task
+            #    print(f"[ERROR] Saint photo and face registration background task failed: {e}")
 
     def upload_qr_image_pdf_background(
-        self,
-        saint_id: int,
-        item: dict,
-    ):
-        """
-        Background task:
-        1. Upload qr image to document library
-        2. Register face embedding into vector DB
-        """
-        print("Starting QR and PDF generation background task.")
-        #try:
-        # 4️⃣ Generate QR code and store in SharePoint list
-        qr_path,qr_image_bytes = generate_qr(
-            saint=item,
-            uploader= self.uploader,
-            ttl_days=30,
-            column_name="QRImage"
-        )
+            self,
+            saint_id: int,
+            item: dict,
+        ):
+            """
+            Background task:
+            1. Upload qr image to document library
+            2. Register face embedding into vector DB
+            """
+            print("Starting QR and PDF generation background task.")
+            #try:
+            # 4️⃣ Generate QR code and store in SharePoint list
+            qr_path,qr_image_bytes = generate_qr(
+                saint=item,
+                uploader= self.uploader,
+                ttl_days=30,
+                column_name="QRImage"
+            )
 
-        # 5️⃣ Generate printable PDF Saint Card
-        pdf_path = generate_qr_pdf_card(
-            saint=item,
-            qr_image_bytes=qr_image_bytes,
-            uploader= self.uploader,
-            column_name="PDFPath"
-        )
-            
+            # 5️⃣ Generate printable PDF Saint Card
+            pdf_path = generate_qr_pdf_card(
+                saint=item,
+                qr_image_bytes=qr_image_bytes,
+                uploader= self.uploader,
+                column_name="PDFPath"
+            )
+                
 
-        #except Exception as e:
-            # Never crash FastAPI background task
-        #    print(f"[ERROR] Saint image background task failed: {e}")
+            #except Exception as e:
+                # Never crash FastAPI background task
+            #    print(f"[ERROR] Saint image background task failed: {e}")
 
 
     def get_choice_columns(self) -> dict:
-        """
-        Fetch dropdown (Choice) columns using Microsoft Graph
-        """
-        url = (
-            f"{self.base_url}"
-            f"/columns"
-        )
+            """
+            Fetch dropdown (Choice) columns using Microsoft Graph
+            """
+            url = (
+                f"{self.base_url}"
+                f"/columns"
+            )
 
-        resp = requests.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {self.auth.get_token()}",
-                "Accept": "application/json"
-            },
-            timeout=30
-        )
-        resp.raise_for_status()
+            resp = requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {self.auth.get_token()}",
+                    "Accept": "application/json"
+                },
+                timeout=30
+            )
+            resp.raise_for_status()
 
-        columns = resp.json()["value"]
-        choices = {}
+            columns = resp.json()["value"]
+            choices = {}
 
-        for col in columns:
-            if col.get("choice"):
-                choices[col["name"]] = col["choice"]["choices"]
+            for col in columns:
+                if col.get("choice"):
+                    choices[col["name"]] = col["choice"]["choices"]
 
-        return choices
+            return choices
 
-     # --------------------------------------------------
-    # DOCUMENT LIBRARY FILE FETCH (NEW – CORRECT WAY)
-    # --------------------------------------------------
-
-    def _build_saint_file_path(
-        self,
-        saint_id: int,
-        filename: str
-    ) -> str:
-        """
-        Example:
-        Saint-116/photo.jpg
-        """
-        return f"/Saint-{saint_id}/{filename}"
-
+        # --------------------------------------------------
+        # DOCUMENT LIBRARY FILE FETCH (NEW – CORRECT WAY)
+        # --------------------------------------------------
 
     def _build_saint_file_path(
-        self,
-        saint_id: int,
-        filename: str
-    ) -> str:
-        """
-        Example:
-        Saint-79/photo.jpg
-        """
-        return f"/Saint-{saint_id}/{filename}"
+            self,
+            saint_id: int,
+            filename: str
+        ) -> str:
+            """
+            Example:
+            Saint-116/photo.jpg
+            """
+            return f"/Saint-{saint_id}/{filename}"
+
+
+    def _build_saint_file_path(
+            self,
+            saint_id: int,
+            filename: str
+        ) -> str:
+            """
+            Example:
+            Saint-79/photo.jpg
+            """
+            return f"/Saint-{saint_id}/{filename}"
 
     def download_saint_file_stream(
-        self,
-        saint_id: int,
-        filename: str
-    ):
-        """
-        Stream file bytes directly from document library
-        """
-        server_relative_path = self._build_saint_file_path(
-            saint_id,
-            filename
-        )
-        print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
-        graph_url = (
-            f"{self.graph_base}"
-            f"/sites/{self.site_id}"
-            f"/drives/{self.saint_drive_id}"
-            f"/root:{server_relative_path}:/content"
-        )
-        print(f"Constructed Graph URL for file download: {graph_url}")
-        resp = requests.get(
-            graph_url,
-            headers=self._headers_binary(),
-            stream=True,
-            timeout=30
-        )
+            self,
+            saint_id: int,
+            filename: str
+        ):
+            """
+            Stream file bytes directly from document library
+            """
+            server_relative_path = self._build_saint_file_path(
+                saint_id,
+                filename
+            )
+            print(f"Downloading file from SharePoint with server relative path: {server_relative_path}")
+            graph_url = (
+                f"{self.graph_base}"
+                f"/sites/{self.site_id}"
+                f"/drives/{self.saint_drive_id}"
+                f"/root:{server_relative_path}:/content"
+            )
+            print(f"Constructed Graph URL for file download: {graph_url}")
+            resp = requests.get(
+                graph_url,
+                headers=self._headers_binary(),
+                stream=True,
+                timeout=30
+            )
 
-        if resp.status_code == 404:
-            raise ValueError("File not found")
+            if resp.status_code == 404:
+                raise ValueError("File not found")
 
-        resp.raise_for_status()
-        return resp.iter_content(chunk_size=8192)
-    
-    import json
+            resp.raise_for_status()
+            return resp.iter_content(chunk_size=8192)
+        
+        
 
-    import json
+import json
 
 def get_image_filename(item: dict, column_name: str = "SaintPhoto") -> str | None:
     """
@@ -436,3 +490,4 @@ def get_image_filename(item: dict, column_name: str = "SaintPhoto") -> str | Non
         return image_json.get("fileName")
     except json.JSONDecodeError:
         return None
+    

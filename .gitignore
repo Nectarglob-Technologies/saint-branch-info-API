@@ -3,6 +3,9 @@
 env/
 venv/
 
+# Ignore data files
+data/
+
 # Python junk
 __pycache__/
 *.pyc
