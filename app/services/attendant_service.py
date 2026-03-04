@@ -311,3 +311,37 @@ class GraphSaintAttendantClient:
                 conditions.append(f"{field} eq {value}")
 
         return " and ".join(conditions)
+
+
+    # def get_attendants_by_saint_id(self, saint_id: int):
+    #         filters = {
+    #             "BranchSaintsDataIDLookupId": saint_id
+    #             }
+    #         return self.get_attendants(filters=filters)
+    def get_attendants_by_saint_ids(self, saint_ids: list[int]):
+
+        if not saint_ids:
+            return []
+
+        filter_query = " or ".join(
+            [f"fields/BranchSaintsDataIDLookupId eq {int(sid)}" for sid in saint_ids]
+        )
+
+        url = f"{self.base_url}/items"
+
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.auth.get_token()}",
+                "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly",
+            },
+            params={
+                "$expand": "fields",
+                "$filter": filter_query,
+            },
+            timeout=30,
+        )
+
+        resp.raise_for_status()
+
+        return [SPListItem(**item) for item in resp.json()["value"]]

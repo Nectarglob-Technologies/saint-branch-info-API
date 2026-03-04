@@ -85,7 +85,7 @@ def create_branch_saint_with_image(
     background_tasks.add_task(
         client.upload_saint_photo_background,
         saint_id=saint_id,
-        item=item,
+        # item=item,
         file=photo,
     )
      # 5 Background task: qr image generation + upload + update list column
@@ -257,10 +257,16 @@ def search_branch_saints_paginated(
             })
 
     # Post-filter age range
+    # if AgeFrom is not None and AgeEnd is not None:
+    #     items = [
+    #         i for i in items
+    #         if AgeFrom <= i.fields.get("Age", 0) <= AgeEnd
+    #     ]
+    # Post filter age
     if AgeFrom is not None and AgeEnd is not None:
         items = [
-            i for i in items
-            if AgeFrom <= i.fields.get("Age", 0) <= AgeEnd
+            item for item in items
+            if AgeFrom <= item.fields.get("Age", 0) <= AgeEnd
         ]
 
     response_items = [
@@ -332,14 +338,66 @@ def get_branch_saint(saint_id: int):
 # --------------------------------------------------
 # UPDATE saint
 # --------------------------------------------------
-@router.put("/{saint_id}")
-def update_branch_saint(saint_id: int, payload: BranchSaintUpdate):
+# @router.put("/{saint_id}")
+# def update_branch_saint(saint_id: int, payload: BranchSaintUpdate):
+#     client.update_saint_item(
+#         saint_id, payload.model_dump(exclude_none=True)
+#     )
+#     return {"status": "updated"}
+# --------------------------------------------------
+# UPDATE saint WITH image (multipart/form-data)
+# --------------------------------------------------
+
+# @router.put("/{saint_id}/with-image")
+# def update_branch_saint_with_image(
+#     saint_id: int,
+#     payload: BranchSaintUpdate = Depends(BranchSaintUpdate.as_form),
+#     photo: UploadFile = File(None),
+#     background_tasks: BackgroundTasks = BackgroundTasks(),
+# ):
+#     # 1️⃣ Update saint fields
+#     client.update_saint_item(
+#         saint_id,
+#         payload.model_dump(exclude_none=True)
+#     )
+
+#     # 2️⃣ If new photo is provided → upload it
+#     if photo:
+#         validate_image(photo)
+
+#         background_tasks.add_task(
+#             client.upload_saint_photo_background,
+#             saint_id=saint_id,
+#             item=None,
+#             file=photo,
+#         )
+
+#     return {"status": "updated with image"}
+
+@router.put("/{saint_id}/with-image")
+def update_branch_saint_with_image(
+    saint_id: int,
+    payload: BranchSaintUpdate = Depends(BranchSaintUpdate.as_form),
+    photo: UploadFile = File(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+):
+    # 1️⃣ Update normal fields
     client.update_saint_item(
-        saint_id, payload.model_dump(exclude_none=True)
+        saint_id,
+        payload.model_dump(exclude_none=True)
     )
-    return {"status": "updated"}
 
+    # 2️⃣ If new photo uploaded → replace it
+    if photo:
+        validate_image(photo)
 
+        background_tasks.add_task(
+            client.upload_saint_photo_background,
+            saint_id=saint_id,
+            file=photo,
+        )
+
+    return {"status": "updated successfully"}
 # --------------------------------------------------
 # DELETE saint
 # --------------------------------------------------

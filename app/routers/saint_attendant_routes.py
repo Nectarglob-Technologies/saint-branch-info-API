@@ -238,16 +238,40 @@ def get_attendant_photo(attendant_id: int, filename: str):
 # ------------------------------------------------------------------
 # UPDATE attendant
 # ------------------------------------------------------------------
-@router.put("/{item_id}")
-def update_saint_attendant(
+# @router.put("/{item_id}")
+# def update_saint_attendant(
+#     item_id: int,
+#     payload: BranchAttendantUpdate
+# ):
+#     client.update_attendant(
+#         item_id,
+#         payload.model_dump(exclude_none=True)
+#     )
+#     return {"status": "updated"}
+@router.put("/{item_id}/with-image")
+def update_attendant_with_image(
     item_id: int,
-    payload: BranchAttendantUpdate
+    payload: BranchAttendantUpdate = Depends(BranchAttendantUpdate.as_form),
+    photo: UploadFile = File(None),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
+    # 1️⃣ Update fields
     client.update_attendant(
         item_id,
         payload.model_dump(exclude_none=True)
     )
-    return {"status": "updated"}
+
+    # 2️⃣ If new photo provided → replace it
+    if photo:
+        validate_image(photo)
+
+        background_tasks.add_task(
+            client.upload_attendant_photo_background,
+            attendant_id=item_id,
+            file=photo,
+        )
+
+    return {"status": "updated with image"}
 
 # ------------------------------------------------------------------
 # DELETE attendant

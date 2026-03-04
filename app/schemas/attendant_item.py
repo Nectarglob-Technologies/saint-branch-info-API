@@ -28,13 +28,33 @@ class BranchAttendantCreate(BaseModel):
         )
 
 # ---------- UPDATE ----------
+# class BranchAttendantUpdate(BaseModel):
+#     Title: Optional[str] = None
+#     AttendantContactNo: Optional[int] = None
+#     AttendantAddress: Optional[str] = None
+#     BranchSaintsDataIDLookupId: Optional[int] = None
+    
+# ---------- UPDATE ----------
 class BranchAttendantUpdate(BaseModel):
     Title: Optional[str] = None
     AttendantContactNo: Optional[int] = None
     AttendantAddress: Optional[str] = None
     BranchSaintsDataIDLookupId: Optional[int] = None
-    
 
+    @classmethod
+    def as_form(
+        cls,
+        Title: Optional[str] = Form(None),
+        AttendantContactNo: Optional[int] = Form(None),
+        AttendantAddress: Optional[str] = Form(None),
+        BranchSaintsDataIDLookupId: Optional[int] = Form(None),
+    ):
+        return cls(
+            Title=Title,
+            AttendantContactNo=AttendantContactNo,
+            AttendantAddress=AttendantAddress,
+            BranchSaintsDataIDLookupId=BranchSaintsDataIDLookupId,
+        )
 
 class BranchAttendantResponse(BaseModel):
     success: bool

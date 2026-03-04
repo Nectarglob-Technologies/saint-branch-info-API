@@ -71,6 +71,26 @@ class BranchSaintCreate(BaseModel):
 
 
 # ---------- UPDATE ----------
+# class BranchSaintUpdate(BaseModel):
+#     Title: Optional[str] = None
+#     Gender: Optional[str] = None
+#     SaintContactNo: Optional[int] = None
+#     Age: Optional[int] = None
+#     Height: Optional[int] = None
+#     Complexion: Optional[str] = None
+#     MentalHealth: Optional[str] = None
+#     SelfReliant: Optional[str] = None
+#     Address1: Optional[str] = None
+#     City: Optional[str] = None
+#     State: Optional[str] = None
+#     Country: Optional[str] = None
+#     Pincode: Optional[str] = None
+#     BranchName: Optional[str] = None
+#     BranchAddress: Optional[str] = None
+#     EventIDLookupId: Optional[int] = None
+#     Comments: Optional[str] = None
+    
+# ---------- UPDATE ----------
 class BranchSaintUpdate(BaseModel):
     Title: Optional[str] = None
     Gender: Optional[str] = None
@@ -89,7 +109,51 @@ class BranchSaintUpdate(BaseModel):
     BranchAddress: Optional[str] = None
     EventIDLookupId: Optional[int] = None
     Comments: Optional[str] = None
-    
+
+    # 🔥 ADD THIS
+    @classmethod
+    def as_form(
+        cls,
+        Title: Optional[str] = Form(None),
+        Gender: Optional[str] = Form(None),
+        SaintContactNo: Optional[int] = Form(None),
+        Age: Optional[int] = Form(None),
+        Height: Optional[int] = Form(None),
+        Complexion: Optional[str] = Form(None),
+        MentalHealth: Optional[str] = Form(None),
+        SelfReliant: Optional[str] = Form(None),
+        Address1: Optional[str] = Form(None),
+        City: Optional[str] = Form(None),
+        State: Optional[str] = Form(None),
+        Country: Optional[str] = Form(None),
+        Pincode: Optional[str] = Form(None),
+        BranchName: Optional[str] = Form(None),
+        BranchAddress: Optional[str] = Form(None),
+        EventIDLookupId: Optional[int] = Form(None),
+        Comments: Optional[str] = Form(None),
+    ):
+        return cls(
+            Title=Title,
+            Gender=Gender,
+            SaintContactNo=SaintContactNo,
+            Age=Age,
+            Height=Height,
+            Complexion=Complexion,
+            MentalHealth=MentalHealth,
+            SelfReliant=SelfReliant,
+            Address1=Address1,
+            City=City,
+            State=State,
+            Country=Country,
+            Pincode=Pincode,
+            BranchName=BranchName,
+            BranchAddress=BranchAddress,
+            EventIDLookupId=EventIDLookupId,
+            Comments=Comments,
+        )
+
+
+
 # ---------- Single Record RESPONSE ----------
 class BranchSaintSingleRecordResponse(BaseModel):
     success: bool

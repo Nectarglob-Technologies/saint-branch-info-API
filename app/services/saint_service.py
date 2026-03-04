@@ -65,15 +65,15 @@ class GraphBranchSaintClient:
 
         # 🔹 Attendants ghe
         attendants = attendant_client.get_attendants()
-        print("Saint IDs:", [s.id for s in saints])
-        print("Attendant Saint IDs:", [a.fields.get("BranchSaintsDataIDLookupId") for a in attendants])
+        # print("Saint IDs:", [s.id for s in saints])
+        # print("Attendant Saint IDs:", [a.fields.get("BranchSaintsDataIDLookupId") for a in attendants])
 
 
-        # 🔹 Group attendants by SaintId
+        # 🔹 Group attendants by SaintId dictionary create
         attendant_map = defaultdict(list)
 
         for att in attendants:
-            saint_id = att.fields.get("BranchSaintsDataIDLookupId")  # ⚠ field name confirm kar
+            saint_id = att.fields.get("BranchSaintsDataIDLookupId")  # ⚠ saint id 
             if saint_id:
                 attendant_map[int(saint_id)].append({
                     "id": att.id,
@@ -299,55 +299,110 @@ class GraphBranchSaintClient:
         # Background task: upload image + face registration
         # ------------------------------------------------------------------
 
-    def upload_saint_photo_background(
-            self,
-            saint_id: int,
-            item: dict,
-            file: UploadFile,
-        ):
-            """
-            Background task:
-            1. Upload image to document library
-            2. Register face embedding into vector DB
-            """
+    # def upload_saint_photo_background(
+    #         self,
+    #         saint_id: int,
+    #         item: dict,
+    #         file: UploadFile,
+    #     ):
+    #         """
+    #         Background task:
+    #         1. Upload image to document library
+    #         2. Register face embedding into vector DB
+    #         """
 
-            #try:
+    #         #try:
+
+    #         # 1️⃣ Resize image
+    #         resized_bytes = resize_image(file)
+    #         #print("Resized image bytes size:", len(resized_bytes))
+            
+    #         # 2️⃣ Upload to SharePoint document library using SharePointUploader utility class - pass connection details
+            
+    #         saint_data = {
+    #             "id": item["id"],
+    #             **item.get("fields", {})
+    #         }
+
+    #         # Upload image file
+    #         photo_url = self.uploader.upload_file(
+    #             saint_id=saint_id,
+    #             file_bytes=resized_bytes,
+    #             filename=saint_data.get("SaintUUID") + file.filename[file.filename.rfind("."):],
+    #         )
+            
+    #         # Update SaintPhoto column with server relative URL
+    #         extacted_image_url = self.uploader.extract_server_relative_url(photo_url)
+            
+    #         # Update SaintPhoto column
+    #         self.uploader.update_image_column(saint_id,"SaintPhoto",extacted_image_url)
+            
+    #         # Register face (detector + embedding + FAISS)
+    #         self.face_service.register_face(
+    #             entity_type="saint",
+    #             entity_id=saint_id,
+    #             image_bytes=resized_bytes,
+    #             image_url=photo_url,
+    #         )
+            
+    #         #except Exception as e:
+    #             # Never crash FastAPI background task
+    #         #    print(f"[ERROR] Saint photo and face registration background task failed: {e}")
+
+    def upload_saint_photo_background(
+        self,
+        saint_id: int,
+        file: UploadFile,
+    ):
+        """
+        Background task:
+        1. Upload image to document library
+        2. Register face embedding into vector DB
+        """
+
+        try:
+            # 🔥 ALWAYS fetch fresh saint item
+            item = self.get_saint_item_by_id(saint_id)
+
+            if not item:
+                print("ERROR: Saint item not found during photo upload")
+                return
 
             # 1️⃣ Resize image
             resized_bytes = resize_image(file)
-            #print("Resized image bytes size:", len(resized_bytes))
-            
-            # 2️⃣ Upload to SharePoint document library using SharePointUploader utility class - pass connection details
-            
+
             saint_data = {
                 "id": item["id"],
                 **item.get("fields", {})
             }
 
-            # Upload image file
+            # 2️⃣ Upload image
             photo_url = self.uploader.upload_file(
                 saint_id=saint_id,
                 file_bytes=resized_bytes,
                 filename=saint_data.get("SaintUUID") + file.filename[file.filename.rfind("."):],
             )
-            
-            # Update SaintPhoto column with server relative URL
-            extacted_image_url = self.uploader.extract_server_relative_url(photo_url)
-            
-            # Update SaintPhoto column
-            self.uploader.update_image_column(saint_id,"SaintPhoto",extacted_image_url)
-            
-            # Register face (detector + embedding + FAISS)
+
+            # 3️⃣ Extract URL
+            extracted_image_url = self.uploader.extract_server_relative_url(photo_url)
+
+            # 4️⃣ Update Image column
+            self.uploader.update_image_column(
+                saint_id,
+                "SaintPhoto",
+                extracted_image_url
+            )
+
+            # 5️⃣ Register face (this will now correctly update FAISS)
             self.face_service.register_face(
                 entity_type="saint",
                 entity_id=saint_id,
                 image_bytes=resized_bytes,
                 image_url=photo_url,
             )
-            
-            #except Exception as e:
-                # Never crash FastAPI background task
-            #    print(f"[ERROR] Saint photo and face registration background task failed: {e}")
+
+        except Exception as e:
+            print(f"[ERROR] Saint photo background failed: {e}")
 
     def upload_qr_image_pdf_background(
             self,
