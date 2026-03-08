@@ -4,12 +4,13 @@ from app.services.vector_service import VectorService
 
 
 
-
+from app.services.vector_service import vector_service_instance
 
 class FaceService:
     def __init__(self):
         self.detector = FaceDetector()
-        self.vector_service = VectorService()
+        # self.vector_service = VectorService()
+        self.vector_service = vector_service_instance
         # self.saint_client = GraphBranchSaintClient() 
 
     # ---------------- REGISTER FACE ---------------- #
@@ -22,6 +23,7 @@ class FaceService:
         image_url: str,
     ):
         faces = self.detector.detect(image_bytes)
+        print("Detected faces during registration:", len(faces))
 
         if not faces:
             raise ValueError("No face detected")
@@ -31,6 +33,7 @@ class FaceService:
 
         # embedding = face.embedding.astype("float32")
         embedding = face.normed_embedding.astype("float32")
+        print("Embedding generated, shape:", embedding.shape)
         # embedding = face.normed_embedding.astype("float32")
 
         self.vector_service.add_face(
@@ -50,7 +53,9 @@ class FaceService:
 
     def verify_face(self, image_bytes: bytes):
         faces = self.detector.detect(image_bytes)
+        print("Detected faces during verification:", len(faces))
 
+        print(f"Detected {len(faces)} faces")
         if not faces:
             return {
                 "match": False,
@@ -58,19 +63,21 @@ class FaceService:
             }
 
         face = max(faces, key=lambda f: f.det_score)
+        print(f"Best face detected with confidence {face.det_score:.4f}")
         # embedding = face.embedding.astype("float32")
         # embedding = face.normed_embedding.astype("float32")
         embedding = face.normed_embedding.astype("float32")
 
         buckets = self.vector_service.search(embedding)
-
+        print(f"Search results - High: {len(buckets['high'])}, Medium: {len(buckets['medium'])}, Low: {len(buckets['low'])}")
         high = buckets["high"]
         medium = buckets["medium"]
         low = buckets["low"]
-
+        #print(f"Search results - High: {len(high)}, Medium: {len(medium)}, Low: {len(low)}")   
         # ✅ Auto accept if strong match exists
         if high:
             best = max(high, key=lambda x: x["score"])
+            print(f"Best high match - ID: {best['entity_id']}, Score: {best['score']:.4f}")
             return {
                 "match": True,
                 "confidence": "HIGH",
@@ -101,6 +108,7 @@ class FaceService:
 
     def verify_face_with_policy(self, image_bytes: bytes, mode: str = "default"):
         faces = self.detector.detect(image_bytes)
+        print("Detected faces during policy verification:", len(faces))
 
         if not faces:
             return {
@@ -109,13 +117,18 @@ class FaceService:
             }
 
         face = max(faces, key=lambda f: f.det_score)
+        print("Best face detection score:", face.det_score)
         # embedding = face.embedding.astype("float32")
         embedding = face.normed_embedding.astype("float32")
         # embedding = face.normed_embedding.astype("float32")
 
         results = self.vector_service.search(embedding)
+        print(f"Search results - High: {len(results['high'])}, Medium: {len(results['medium'])}, Low: {len(results['low'])}")
+ 
 
         best_match = results["high"][0] if results["high"] else None
+        if best_match:
+             print("Best match image URL:", best_match.get("image_url"))
 
         response = {
             "best_match": best_match,

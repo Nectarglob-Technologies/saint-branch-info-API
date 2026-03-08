@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from app.services.face_service import FaceService
 
 router = APIRouter(prefix="/face", tags=["Face"])
@@ -13,15 +13,8 @@ async def register_face(saint_id: int, file: UploadFile = File(...)):
 @router.post("/verify")
 async def verify_face(file: UploadFile = File(...)):
     image_bytes = await file.read()
+    #
     return face_service.verify_face(image_bytes)
-
-from fastapi import APIRouter, UploadFile, File, Query
-from app.services.face_service import FaceService
-
-router = APIRouter(prefix="/face", tags=["Face Search"])
-
-face_service = FaceService()
-
 
 @router.post("/search-by-image")
 async def search_by_image(
@@ -33,12 +26,12 @@ async def search_by_image(
     try:
 
         image_bytes = await file.read()
-
+        print("Received image for verification, size:", len(image_bytes), "bytes")
         result = face_service.verify_face_with_policy(
             image_bytes=image_bytes,
             mode=mode,
         )
-
+        print("Verification result:", result)
         return result
 
     # 🔹 CLIENT ERRORS (send exact message to UI)
